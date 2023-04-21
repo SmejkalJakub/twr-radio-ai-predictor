@@ -1,0 +1,10 @@
+target_sources(
+    ${CMAKE_PROJECT_NAME}
+    PUBLIC
+    network_temperature.c
+    network_temperature_data.c
+    network_temperature_data_params.c
+    network_humidity.c
+    network_humidity_data.c
+    network_humidity_data_params.c
+    )
