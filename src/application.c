@@ -3,18 +3,24 @@
 // Forum https://forum.hardwario.com/
 
 #include <application.h>
+
+// AI library import
 #include <ai_platform.h>
 
+// Temperature network import
 #include <network_temperature.h>
 #include <network_temperature_data.h>
 
+// Humidity network import
 #include <network_humidity.h>
 #include <network_humidity_data.h>
 
 #include <stm32l0xx_hal_crc.h>
 
+// Send every 10 minutes
 #define UPDATE_INTERVAL (10 * 60 * 1000)
 
+// Send every 10 seconds
 //#define UPDATE_INTERVAL (10000)
 
 // LED instance
@@ -27,6 +33,7 @@ twr_button_t button;
 twr_tmp112_t tmp112;
 float core_tmp112_value = 0;
 
+// Humidity tag instance
 twr_tag_humidity_t humidity_tag;
 float tag_humidity = 0;
 
@@ -34,11 +41,14 @@ uint16_t button_click_count = 0;
 
 twr_scheduler_task_id_t send_data_task_id;
 
+// Date time structure
 struct tm datetime;
 
+// Buffer for data to send
 float lastTemperature = 0;
 float lastHumidity = 0;
 
+// All definitions for temperature and humidity AI networks
 ai_handle network_temperature;
 float aiTemperatureInData[AI_NETWORK_TEMPERATURE_IN_1_SIZE];
 float aiTemperatureOutData[AI_NETWORK_TEMPERATURE_OUT_1_SIZE];
@@ -63,6 +73,7 @@ ai_buffer *ai_humidity_output;
 static void AI_Humidity_Init(void);
 static void AI_Humidity_Run(float *pIn, float *pOut);
 
+// Initialization of temperature network
 static void AI_Temperature_Init(void)
 {
     ai_error err;
@@ -80,6 +91,7 @@ static void AI_Temperature_Init(void)
     ai_temperature_output = ai_network_temperature_outputs_get(network_temperature, NULL);
 }
 
+// Run the temperature network over the inputs and save the output
 static void AI_Temperature_Run(float *pIn, float *pOut)
 {
     ai_i32 batch;
@@ -98,6 +110,7 @@ static void AI_Temperature_Run(float *pIn, float *pOut)
     }
 }
 
+// Initialization of humidity network
 static void AI_Humidity_Init(void)
 {
     ai_error err;
@@ -115,6 +128,7 @@ static void AI_Humidity_Init(void)
     ai_humidity_output = ai_network_humidity_outputs_get(network_humidity, NULL);
 }
 
+// Run the humidity network over the inputs and save the output
 static void AI_Humidity_Run(float *pIn, float *pOut)
 {
     ai_i32 batch;
@@ -151,6 +165,7 @@ void button_event_handler(twr_button_t *self, twr_button_event_t event, void *ev
     }
 }
 
+// Save humidity for sending into a variable
 void humidity_tag_event_handler(twr_tag_humidity_t *self, twr_tag_humidity_event_t event, void *event_param)
 {
     if (event == TWR_TAG_HUMIDITY_EVENT_UPDATE)
@@ -164,6 +179,7 @@ void humidity_tag_event_handler(twr_tag_humidity_t *self, twr_tag_humidity_event
     }
 }
 
+// Save temperature for sending into a variable
 void tmp112_event_handler(twr_tmp112_t *self, twr_tmp112_event_t event, void *event_param)
 {
     if (event == TWR_TMP112_EVENT_UPDATE)
@@ -177,6 +193,7 @@ void tmp112_event_handler(twr_tmp112_t *self, twr_tmp112_event_t event, void *ev
     }
 }
 
+// This function sends measured and predicted data over the radio
 void send_data_task()
 {
     twr_log_debug("SENDING DATA");
@@ -185,6 +202,7 @@ void send_data_task()
 
     int year = datetime.tm_year + 1900;
 
+    // Put all the needed data into as inputs (based on what you trained the model with)
     ((ai_float *)aiTemperatureInData)[0] = (ai_float)year;
     ((ai_float *)aiTemperatureInData)[1] = (ai_float)datetime.tm_mon;
     ((ai_float *)aiTemperatureInData)[2] = (ai_float)datetime.tm_mday;
@@ -194,10 +212,13 @@ void send_data_task()
     ((ai_float *)aiTemperatureInData)[6] = (ai_float)lastTemperature;
     ((ai_float *)aiTemperatureInData)[7] = (ai_float)lastHumidity;
 
+    // Run the model
     AI_Temperature_Run(aiTemperatureInData, aiTemperatureOutData);
 
+    // Get the output
     float predicted_temperature = ((ai_float *)aiTemperatureOutData)[0];
 
+    // Put all the needed data into as inputs (based on what you trained the model with)
     ((ai_float *)aiHumidityInData)[0] = (ai_float)year;
     ((ai_float *)aiHumidityInData)[1] = (ai_float)datetime.tm_mon;
     ((ai_float *)aiHumidityInData)[2] = (ai_float)datetime.tm_mday;
@@ -207,15 +228,19 @@ void send_data_task()
     ((ai_float *)aiHumidityInData)[6] = (ai_float)lastHumidity;
     ((ai_float *)aiHumidityInData)[7] = (ai_float)lastTemperature;
 
+    // Run the model
     AI_Humidity_Run(aiHumidityInData, aiHumidityOutData);
 
+    // Get the output
     float predicted_humidity = ((ai_float *)aiHumidityOutData)[0];
 
+    // Create string in JSON format for the predicted data
     char buffer_predicted[64];
     snprintf(buffer_predicted, sizeof(buffer_predicted), "{\\\"p_temp\\\":%.2f,\\\"p_hum\\\":%.2f}", predicted_temperature, predicted_humidity);
     twr_radio_pub_string("predicted", buffer_predicted);
     twr_log_debug("PREDICTED: %s", buffer_predicted);
 
+    // Create string in JSON format for the measured data
     char buffer[64];
     snprintf(buffer, sizeof(buffer), "{\\\"temperature\\\":%.2f,\\\"humidity\\\":%.2f}", core_tmp112_value, tag_humidity);
     twr_log_debug("DATA: %s", buffer);
@@ -232,7 +257,8 @@ void application_init(void)
 {
     __HAL_RCC_CRC_CLK_ENABLE();
 
-    /*struct tm datetime;
+    // You need to set up the time if you trained tme model with time
+    struct tm datetime;
 
     datetime.tm_hour = 12;
     datetime.tm_min = 43;
@@ -242,7 +268,7 @@ void application_init(void)
     datetime.tm_mday = 20;
     datetime.tm_year = 123;
 
-    twr_rtc_set_datetime(&datetime, 0);*/
+    twr_rtc_set_datetime(&datetime, 0);
 
     // Initialize logging
     twr_log_init(TWR_LOG_LEVEL_DUMP, TWR_LOG_TIMESTAMP_ABS);
@@ -271,11 +297,13 @@ void application_init(void)
     // Initialize radio
     twr_radio_init(TWR_RADIO_MODE_NODE_SLEEPING);
 
+    // Register send task
     send_data_task_id = twr_scheduler_register(send_data_task, NULL, UPDATE_INTERVAL + 1000);
 
     // Send radio pairing request
     twr_radio_pairing_request("toi-project", FW_VERSION);
 
+    // You need to set up the time if you trained tme model with time
     twr_rtc_get_datetime(&datetime);
     twr_log_debug("$DATE: \"%d-%02d-%02dT%02d:%02d:%02dZ\"", datetime.tm_year + 1900, datetime.tm_mon, datetime.tm_mday, datetime.tm_hour, datetime.tm_min, datetime.tm_sec);
 }
