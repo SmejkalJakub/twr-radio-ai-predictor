@@ -301,7 +301,7 @@ void application_init(void)
     send_data_task_id = twr_scheduler_register(send_data_task, NULL, UPDATE_INTERVAL + 1000);
 
     // Send radio pairing request
-    twr_radio_pairing_request("toi-project", FW_VERSION);
+    twr_radio_pairing_request("ai-data-predictor", FW_VERSION);
 
     // You need to set up the time if you trained tme model with time
     twr_rtc_get_datetime(&datetime);
